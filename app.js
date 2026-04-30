@@ -1,217 +1,269 @@
-// ═══════════════════════════════════════════
-//  NumX — Application Controller
-// ═══════════════════════════════════════════
-'use strict';
+const { PDFDocument, rgb, degrees } = PDFLib;
 
-// ── PDF.js worker ─────────────────────────
-const pdfjsLib = window['pdfjs-dist/build/pdf'];
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-// ── App state ─────────────────────────────
-const App = {
-  pdfBytes:   null,
-  pdfDoc_js:  null,  // pdfjs document for rendering + safe export
-  fileName:   '',
-  totalPages: 0,
-
-  // Debounced overlay refresh
-  _refreshTimer: null,
-  scheduleRefresh() {
-    clearTimeout(this._refreshTimer);
-    this._refreshTimer = setTimeout(() => this.refreshOverlay(), 60);
-  },
-
-  refreshOverlay() {
-    if (!this.pdfDoc_js) return;
-    Renderer.refreshOverlay(Elements.getAll());
-    Elements.renderList();
-  },
+let state = {
+    pdfDoc: null,
+    pdfBytes: null,
+    totalOriginalPages: 0,
+    currentPage: 1,
+    zoom: 1.0,
+    elements: [],
+    activeElementId: null,
+    isDragging: false
 };
 
-// ── On elements change → refresh overlay ──
-Elements.setChangeCallback(() => {
-  App.scheduleRefresh();
+// --- Initialization ---
+document.addEventListener('DOMContentLoaded', () => {
+    initEvents();
+    addElement(); // Start with one default element
 });
 
-// ── File loading ──────────────────────────
-async function loadFile(file) {
-  if (!file || !/\.pdf$/i.test(file.name)) {
-    Utils.toast('Please select a PDF file'); return;
-  }
+function initEvents() {
+    document.getElementById('pdf-upload').addEventListener('change', handleUpload);
+    document.getElementById('add-element').addEventListener('click', addElement);
+    document.getElementById('prev-page').addEventListener('click', () => changePage(-1));
+    document.getElementById('next-page').addEventListener('click', () => changePage(1));
+    document.getElementById('export-btn').addEventListener('click', exportPDF);
+    
+    // Bind all inputs to update the state and preview
+    const inputs = ['format', 'start-num', 'padding', 'apply-to', 'start-page', 'font-size', 'font-color', 'opacity', 'pos-x', 'pos-y', 'rotation'];
+    inputs.forEach(id => {
+        document.getElementById(id).addEventListener('input', (e) => {
+            updateActiveElement(id.replace(/-([a-z])/g, g => g[1].toUpperCase()), e.target.value);
+        });
+    });
 
-  Utils.showLoader('Opening PDF…', 10);
-
-  try {
-    const bytes   = await file.arrayBuffer();
-    App.pdfBytes  = new Uint8Array(bytes);
-    App.fileName  = file.name;
-
-    // Load with pdfjs (copy so pdf-lib can use original bytes)
-    const copy    = App.pdfBytes.slice(0);
-    App.pdfDoc_js = await pdfjsLib.getDocument({ data: copy }).promise;
-    App.totalPages = App.pdfDoc_js.numPages;
-
-    Renderer.init(App.pdfDoc_js);
-
-    // Update top bar
-    Utils.$('file-badge').textContent = file.name;
-    Utils.$('page-total').textContent = '/ ' + App.totalPages;
-    Utils.$('page-input').max  = App.totalPages;
-    Utils.$('page-input').value = 1;
-    Utils.$('page-nav').style.display = 'flex';
-    Utils.$('btn-export').disabled = false;
-
-    // Show preview
-    Utils.$('drop-zone').classList.add('hidden');
-    Utils.$('preview-container').style.display = 'flex';
-
-    Utils.setProgress(40);
-
-    // Fit scale to window
-    const area = Utils.$('canvas-area');
-    Renderer.fitScale(area.clientWidth, area.clientHeight);
-    updateZoomLabel();
-
-    Utils.setProgress(60);
-
-    // Render first page
-    await Renderer.fullRender(Elements.getAll());
-
-    Utils.setProgress(100);
-    Utils.hideLoader();
-    Utils.toast('📄 ' + file.name + ' loaded');
-
-  } catch(e) {
-    Utils.hideLoader();
-    Utils.toast('❌ Failed to load PDF: ' + e.message);
-    console.error(e);
-  }
+    document.getElementById('repeat-count').addEventListener('change', renderPreview);
 }
 
-// ── Zoom ──────────────────────────────────
-function updateZoomLabel() {
-  Utils.$('zoom-label').textContent = Math.round(Renderer.scale() * 100 / 1.5 * 100) + '%';
-}
+// --- PDF Loading ---
+async function handleUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-async function zoom(delta) {
-  Renderer.setScale(Renderer.scale() + delta * 0.25);
-  updateZoomLabel();
-  await Renderer.fullRender(Elements.getAll());
-}
+    state.pdfBytes = await file.arrayBuffer();
+    const loadingTask = pdfjsLib.getDocument({ data: state.pdfBytes });
+    state.pdfDoc = await loadingTask.promise;
+    state.totalOriginalPages = state.pdfDoc.numPages;
 
-async function zoomFit() {
-  const area = Utils.$('canvas-area');
-  Renderer.fitScale(area.clientWidth, area.clientHeight);
-  updateZoomLabel();
-  await Renderer.fullRender(Elements.getAll());
-}
-
-// ── Page navigation ───────────────────────
-async function goToPage(n) {
-  Renderer.goTo(n);
-  Utils.$('page-input').value = Renderer.currentPage();
-  await Renderer.fullRender(Elements.getAll());
-}
-
-// ── Export ────────────────────────────────
-async function doExport() {
-  if (!App.pdfBytes) return;
-  const safeMode = Utils.$('safe-mode').checked;
-  const elements = Elements.getAll().filter(e => e.visible);
-  if (!elements.length) { Utils.toast('No visible elements to stamp'); return; }
-
-  try {
-    if (safeMode) {
-      await Exporter.exportSafe(App.pdfDoc_js, Elements.getAll(), App.totalPages, App.fileName);
+    document.getElementById('empty-state').classList.add('hidden');
+    document.getElementById('total-pages-num').innerText = state.totalOriginalPages;
+    
+    if (state.totalOriginalPages === 1) {
+        document.getElementById('repeat-container').classList.remove('hidden');
     } else {
-      await Exporter.exportDirect(App.pdfBytes, Elements.getAll(), App.totalPages, App.fileName);
+        document.getElementById('repeat-container').classList.add('hidden');
     }
-  } catch(e) {
-    Utils.hideLoader();
-    Utils.toast('❌ Export error: ' + e.message);
-    console.error(e);
-  }
+
+    renderPreview();
 }
 
-// ── Wire UI ───────────────────────────────
-function wireUI() {
-
-  // File input
-  const fileInput = Utils.$('file-input');
-  fileInput.addEventListener('change', e => {
-    if (e.target.files[0]) { loadFile(e.target.files[0]); fileInput.value = ''; }
-  });
-
-  Utils.$('btn-upload').addEventListener('click', () => fileInput.click());
-  Utils.$('btn-dz-open').addEventListener('click', () => fileInput.click());
-
-  // Drag & drop on drop card
-  const dzTarget = Utils.$('dz-target');
-  ['dragover','dragenter'].forEach(ev => {
-    dzTarget.addEventListener(ev, e => { e.preventDefault(); dzTarget.classList.add('drag-over'); });
-  });
-  ['dragleave','dragend'].forEach(ev => {
-    dzTarget.addEventListener(ev, () => dzTarget.classList.remove('drag-over'));
-  });
-  dzTarget.addEventListener('drop', e => {
-    e.preventDefault(); dzTarget.classList.remove('drag-over');
-    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
-  });
-  dzTarget.addEventListener('click', e => {
-    if (e.target === dzTarget) fileInput.click();
-  });
-
-  // Also allow drop anywhere in the canvas area
-  Utils.$('canvas-area').addEventListener('dragover', e => e.preventDefault());
-  Utils.$('canvas-area').addEventListener('drop', e => {
-    e.preventDefault();
-    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
-  });
-
-  // Page navigation
-  Utils.$('btn-prev').addEventListener('click', () => goToPage(Renderer.currentPage() - 1));
-  Utils.$('btn-next').addEventListener('click', () => goToPage(Renderer.currentPage() + 1));
-  Utils.$('page-input').addEventListener('change', e => goToPage(parseInt(e.target.value) || 1));
-
-  // Keyboard navigation
-  document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-    if (!App.pdfDoc_js) return;
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    goToPage(Renderer.currentPage() - 1);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  goToPage(Renderer.currentPage() + 1);
-  });
-
-  // Zoom
-  Utils.$('btn-zoom-in').addEventListener('click', () => zoom(1));
-  Utils.$('btn-zoom-out').addEventListener('click', () => zoom(-1));
-  Utils.$('btn-zoom-fit').addEventListener('click', zoomFit);
-
-  // Export
-  Utils.$('btn-export').addEventListener('click', doExport);
-
-  // Wire sidebar element controls
-  Elements.wireSidebar();
-
-  // PWA
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+// --- Element Management ---
+function addElement() {
+    const id = Date.now();
+    const newElement = {
+        id,
+        format: 'Page {n}',
+        startNum: 1,
+        padding: 1,
+        applyTo: 'all',
+        startPage: 1,
+        fontSize: 24,
+        color: '#ff0000',
+        opacity: 100,
+        posX: 50,
+        posY: 90,
+        rotation: 0
+    };
+    state.elements.push(newElement);
+    setActiveElement(id);
+    updateElementList();
 }
 
-// ── Init ──────────────────────────────────
-function init() {
-  wireUI();
-
-  // Create default element
-  Elements.add();
-  Elements.renderList();
-  Elements.syncSidebarToActive();
-
-  console.log(
-    '%cNumX v2.0 — Professional PDF Numbering\nhttps://qnest.app',
-    'color:#3b82f6;font-weight:700;font-size:13px'
-  );
+function updateElementList() {
+    const list = document.getElementById('element-list');
+    list.innerHTML = '';
+    state.elements.forEach((el, index) => {
+        const div = document.createElement('div');
+        div.className = `control-row item ${el.id === state.activeElementId ? 'active' : ''}`;
+        div.style = "background: #334155; padding: 10px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between;";
+        div.innerHTML = `
+            <span>Element ${index + 1}</span>
+            <button onclick="deleteElement(${el.id}, event)" style="background:none; border:none; color:#f87171; cursor:pointer;">✕</button>
+        `;
+        div.onclick = () => setActiveElement(el.id);
+        list.appendChild(div);
+    });
 }
 
-document.addEventListener('DOMContentLoaded', init);
+function setActiveElement(id) {
+    state.activeElementId = id;
+    const el = state.elements.find(e => e.id === id);
+    if (!el) return;
+
+    document.getElementById('element-settings').classList.remove('disabled');
+    
+    // Sync UI
+    document.getElementById('format').value = el.format;
+    document.getElementById('start-num').value = el.startNum;
+    document.getElementById('padding').value = el.padding;
+    document.getElementById('apply-to').value = el.applyTo;
+    document.getElementById('start-page').value = el.startPage;
+    document.getElementById('font-size').value = el.fontSize;
+    document.getElementById('font-color').value = el.color;
+    document.getElementById('opacity').value = el.opacity;
+    document.getElementById('pos-x').value = el.posX;
+    document.getElementById('pos-y').value = el.posY;
+    document.getElementById('rotation').value = el.rotation;
+
+    updateElementList();
+    renderPreview();
+}
+
+function updateActiveElement(key, value) {
+    const el = state.elements.find(e => e.id === state.activeElementId);
+    if (el) {
+        el[key] = value;
+        renderPreview();
+    }
+}
+
+function deleteElement(id, e) {
+    e.stopPropagation();
+    state.elements = state.elements.filter(el => el.id !== id);
+    if (state.activeElementId === id) state.activeElementId = state.elements[0]?.id || null;
+    updateElementList();
+    renderPreview();
+}
+
+// --- Preview Engine ---
+async function renderPreview() {
+    if (!state.pdfDoc) return;
+
+    const pageNum = state.currentPage;
+    const page = await state.pdfDoc.getPage(pageNum);
+    
+    const viewport = page.getViewport({ scale: 2.0 * state.zoom }); // High res render
+    const canvas = document.getElementById('pdf-canvas');
+    const context = canvas.getContext('2d');
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({ canvasContext: context, viewport: viewport }).promise;
+
+    // Render Overlays (The numbers)
+    const overlay = document.getElementById('overlay-container');
+    overlay.innerHTML = '';
+
+    state.elements.forEach(el => {
+        const placement = NumXEngine.calculatePlacement(el, pageNum - 1, canvas.width, canvas.height, false);
+        if (!placement) return;
+
+        const div = document.createElement('div');
+        div.className = `draggable-number ${el.id === state.activeElementId ? 'active' : ''}`;
+        div.innerText = placement.text;
+        div.style.left = `${placement.x}px`;
+        div.style.top = `${placement.y}px`;
+        div.style.fontSize = `${placement.fontSize * 2 * state.zoom}px`; // Match 2x scale
+        div.style.color = placement.color;
+        div.style.opacity = placement.opacity;
+        div.style.transform = `translate(-50%, -50%) rotate(${placement.rotate}deg)`;
+        
+        // Drag logic
+        div.onmousedown = (e) => startDrag(e, el);
+        
+        overlay.appendChild(div);
+    });
+}
+
+function startDrag(e, element) {
+    setActiveElement(element.id);
+    const rect = document.getElementById('pdf-canvas').getBoundingClientRect();
+    
+    const move = (moveEvt) => {
+        const x = ((moveEvt.clientX - rect.left) / rect.width) * 100;
+        const y = ((moveEvt.clientY - rect.top) / rect.height) * 100;
+        
+        updateActiveElement('posX', Math.max(0, Math.min(100, x.toFixed(1))));
+        updateActiveElement('posY', Math.max(0, Math.min(100, y.toFixed(1))));
+        
+        document.getElementById('pos-x').value = element.posX;
+        document.getElementById('pos-y').value = element.posY;
+    };
+    
+    const stop = () => {
+        window.removeEventListener('mousemove', move);
+        window.removeEventListener('mouseup', stop);
+    };
+    
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+}
+
+function changePage(delta) {
+    const newPage = state.currentPage + delta;
+    if (newPage >= 1 && newPage <= state.totalOriginalPages) {
+        state.currentPage = newPage;
+        document.getElementById('current-page-num').innerText = newPage;
+        renderPreview();
+    }
+}
+
+// --- Export Engine ---
+async function exportPDF() {
+    if (!state.pdfBytes) return;
+
+    // 1. Load document
+    const mainPdf = await PDFDocument.load(state.pdfBytes);
+    const exportPdf = await PDFDocument.create();
+    exportPdf.registerFontkit(fontkit);
+
+    // 2. Handle Repeating Page feature
+    const repeatCount = parseInt(document.getElementById('repeat-count').value) || 1;
+    let pagesToProcess = [];
+
+    if (state.totalOriginalPages === 1 && repeatCount > 1) {
+        const [templatePage] = await exportPdf.copyPages(mainPdf, [0]);
+        for (let i = 0; i < repeatCount; i++) {
+            const newPage = exportPdf.addPage([templatePage.getWidth(), templatePage.getHeight()]);
+            // This is a simplified way to "clone" page content manually or re-copy
+            const [temp] = await exportPdf.copyPages(mainPdf, [0]);
+            exportPdf.insertPage(i, temp);
+        }
+        exportPdf.removePage(repeatCount); // remove the initial addPage
+    } else {
+        const copiedPages = await exportPdf.copyPages(mainPdf, mainPdf.getPageIndices());
+        copiedPages.forEach(p => exportPdf.addPage(p));
+    }
+
+    const pages = exportPdf.getPages();
+
+    // 3. Apply Numbers using SHARED Engine
+    for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        const { width, height } = page.getSize();
+
+        state.elements.forEach(el => {
+            const props = NumXEngine.calculatePlacement(el, i, width, height, true);
+            if (!props) return;
+
+            const rgbColor = NumXEngine.hexToRgb(props.color);
+
+            page.drawText(props.text, {
+                x: props.x,
+                y: props.y,
+                size: props.fontSize,
+                color: rgb(rgbColor.r, rgbColor.g, rgbColor.b),
+                opacity: props.opacity,
+                rotate: degrees(props.rotate),
+            });
+        });
+    }
+
+    // 4. Download
+    const pdfBytes = await exportPdf.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `NumX_Numbered.pdf`;
+    link.click();
+}

@@ -1,376 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0c0c0f">
-<meta name="description" content="NumX — Professional PDF Page Numbering Tool">
-<title>NumX</title>
-<link rel="manifest" href="manifest.json">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&family=Cairo:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NumX | Professional PDF Numbering</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 </head>
-<body>
+<body class="dark-theme">
+    <div id="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">Num<span>X</span></div>
+            
+            <div class="sidebar-scroll">
+                <section class="group">
+                    <h3>1. File</h3>
+                    <div class="control-row">
+                        <label class="upload-btn">
+                            Upload PDF
+                            <input type="file" id="pdf-upload" accept="application/pdf" hidden>
+                        </label>
+                    </div>
+                    <div id="repeat-container" class="control-row hidden">
+                        <label>Repeat Page (Copies)</label>
+                        <input type="number" id="repeat-count" value="1" min="1">
+                    </div>
+                </section>
 
-<!-- ═══ TOP BAR ═══ -->
-<header id="topbar">
-  <div class="tb-left">
-    <div class="brand">
-      <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect width="22" height="22" rx="5" fill="#3b82f6"/><text x="11" y="16" text-anchor="middle" font-family="DM Mono" font-size="11" font-weight="500" fill="white">Nx</text></svg>
-      <span class="brand-name">NumX</span>
-    </div>
-    <div class="tb-sep"></div>
-    <span class="file-badge" id="file-badge">No file loaded</span>
-  </div>
+                <section class="group">
+                    <div class="flex-between">
+                        <h3>2. Elements</h3>
+                        <button id="add-element" class="btn-small">+ Add</button>
+                    </div>
+                    <div id="element-list"></div>
+                </section>
 
-  <div class="tb-center" id="page-nav" style="display:none">
-    <button class="icon-btn" id="btn-prev" title="Previous page (←)">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 3L6 8l4 5"/></svg>
-    </button>
-    <div class="page-input-wrap">
-      <input type="number" id="page-input" value="1" min="1">
-      <span id="page-total">/ 1</span>
-    </div>
-    <button class="icon-btn" id="btn-next" title="Next page (→)">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3l4 5-4 5"/></svg>
-    </button>
-    <div class="tb-sep"></div>
-    <button class="icon-btn" id="btn-zoom-out" title="Zoom out">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="4"/><path d="M5 7h4M11 11l2.5 2.5"/></svg>
-    </button>
-    <span class="zoom-label" id="zoom-label">100%</span>
-    <button class="icon-btn" id="btn-zoom-in" title="Zoom in">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7" cy="7" r="4"/><path d="M7 5v4M5 7h4M11 11l2.5 2.5"/></svg>
-    </button>
-    <button class="icon-btn" id="btn-zoom-fit" title="Fit to window">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg>
-    </button>
-  </div>
+                <div id="element-settings" class="disabled">
+                    <section class="group">
+                        <h3>3. Content</h3>
+                        <div class="control-row">
+                            <label>Format ({n} = number)</label>
+                            <input type="text" id="format" placeholder="Page {n}">
+                        </div>
+                        <div class="grid-2">
+                            <div>
+                                <label>Start</label>
+                                <input type="number" id="start-num" value="1">
+                            </div>
+                            <div>
+                                <label>Padding</label>
+                                <select id="padding">
+                                    <option value="1">1</option>
+                                    <option value="2">01</option>
+                                    <option value="3">001</option>
+                                </select>
+                            </div>
+                        </div>
+                    </section>
 
-  <div class="tb-right">
-    <button class="tb-btn" id="btn-upload">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 10V3M5 6l3-3 3 3"/><path d="M3 11v2h10v-2"/></svg>
-      Open PDF
-    </button>
-    <button class="tb-btn tb-btn-primary" id="btn-export" disabled>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3v7M5 7l3 3 3-3"/><path d="M3 12v1h10v-1"/></svg>
-      Export PDF
-    </button>
-  </div>
-</header>
+                    <section class="group">
+                        <h3>4. Page Rules</h3>
+                        <div class="control-row">
+                            <label>Apply To</label>
+                            <select id="apply-to">
+                                <option value="all">All Pages</option>
+                                <option value="odd">Odd Pages Only</option>
+                                <option value="even">Even Pages Only</option>
+                            </select>
+                        </div>
+                        <div class="control-row">
+                            <label>Start From Page</label>
+                            <input type="number" id="start-page" value="1" min="1">
+                        </div>
+                    </section>
 
-<!-- ═══ MAIN LAYOUT ═══ -->
-<div id="app-layout">
+                    <section class="group">
+                        <h3>5. Style</h3>
+                        <div class="grid-2">
+                            <div>
+                                <label>Size</label>
+                                <input type="number" id="font-size" value="12">
+                            </div>
+                            <div>
+                                <label>Color</label>
+                                <input type="color" id="font-color" value="#000000">
+                            </div>
+                        </div>
+                        <div class="control-row">
+                            <label>Opacity</label>
+                            <input type="range" id="opacity" min="0" max="100" value="100">
+                        </div>
+                    </section>
 
-  <!-- ═══ SIDEBAR ═══ -->
-  <aside id="sidebar">
-
-    <!-- Elements panel -->
-    <div class="panel" id="panel-elements">
-      <div class="panel-header">
-        <span class="panel-title">Elements</span>
-        <button class="add-btn" id="btn-add-element" title="Add numbering element">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>
-        </button>
-      </div>
-      <div class="element-list" id="element-list">
-        <!-- Populated by JS -->
-      </div>
-    </div>
-
-    <div class="sidebar-divider"></div>
-
-    <!-- Settings for selected element -->
-    <div id="element-settings" style="display:none">
-
-      <!-- 1. CONTENT -->
-      <div class="panel">
-        <div class="panel-header collapsible" data-target="content-body">
-          <span class="panel-title">Content</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6l4 4 4-4"/></svg>
-        </div>
-        <div class="panel-body" id="content-body">
-
-          <div class="field">
-            <label>Format</label>
-            <select id="s-format">
-              <option value="{n}">{n} — Number only</option>
-              <option value="Page {n}" selected>Page {n}</option>
-              <option value="No. {n}">No. {n}</option>
-              <option value="- {n} -">- {n} -</option>
-              <option value="[ {n} ]">[ {n} ]</option>
-              <option value="{n} / {total}">{n} / {total}</option>
-              <option value="صفحة {n}">صفحة {n}</option>
-              <option value="custom">Custom…</option>
-            </select>
-          </div>
-
-          <div class="field" id="custom-format-wrap" style="display:none">
-            <label>Custom <span class="hint">use {n} and {total}</span></label>
-            <input type="text" id="s-custom-format" value="{n}" placeholder="{n}">
-          </div>
-
-          <div class="field-row">
-            <div class="field">
-              <label>Start #</label>
-              <input type="number" id="s-start-num" value="1" min="0">
+                    <section class="group">
+                        <h3>6. Position & Rotation</h3>
+                        <div class="grid-2">
+                            <div>
+                                <label>X (%)</label>
+                                <input type="number" id="pos-x" step="0.1" value="50">
+                            </div>
+                            <div>
+                                <label>Y (%)</label>
+                                <input type="number" id="pos-y" step="0.1" value="95">
+                            </div>
+                        </div>
+                        <div class="control-row">
+                            <label>Rotation</label>
+                            <input type="range" id="rotation" min="0" max="360" value="0">
+                        </div>
+                    </section>
+                </div>
             </div>
-            <div class="field">
-              <label>Increment</label>
-              <input type="number" id="s-increment" value="1" min="1">
+        </aside>
+
+        <!-- Main Content -->
+        <main class="viewer">
+            <header class="top-bar">
+                <div class="nav-controls">
+                    <button id="prev-page">←</button>
+                    <span>Page <span id="current-page-num">1</span> / <span id="total-pages-num">1</span></span>
+                    <button id="next-page">→</button>
+                </div>
+                <div class="zoom-controls">
+                    <button id="zoom-out">-</button>
+                    <span id="zoom-level">100%</span>
+                    <button id="zoom-in">+</button>
+                </div>
+                <button id="export-btn" class="primary-btn">Download PDF</button>
+            </header>
+
+            <div class="preview-container" id="drop-zone">
+                <div id="pdf-canvas-wrapper">
+                    <canvas id="pdf-canvas"></canvas>
+                    <div id="overlay-container"></div>
+                </div>
+                <div id="empty-state">
+                    <p>Drag & Drop PDF or Click Upload</p>
+                </div>
             </div>
-          </div>
-
-          <div class="field-row">
-            <div class="field">
-              <label>Padding <span class="hint">digits</span></label>
-              <input type="number" id="s-padding" value="0" min="0" max="6">
-            </div>
-            <div class="field">
-              <label>Numerals</label>
-              <select id="s-numerals">
-                <option value="latin">Latin 1,2,3</option>
-                <option value="arabic-indic">Arabic ١٢٣</option>
-                <option value="roman">Roman I,II</option>
-              </select>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- 2. PAGE RULES -->
-      <div class="panel">
-        <div class="panel-header collapsible" data-target="rules-body">
-          <span class="panel-title">Page Rules</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6l4 4 4-4"/></svg>
-        </div>
-        <div class="panel-body" id="rules-body">
-
-          <div class="field-row">
-            <div class="field">
-              <label>From page</label>
-              <input type="number" id="s-from-page" value="1" min="1">
-            </div>
-            <div class="field">
-              <label>To page <span class="hint">0=all</span></label>
-              <input type="number" id="s-to-page" value="0" min="0">
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Apply to</label>
-            <div class="seg-ctrl" data-key="apply">
-              <button class="seg active" data-val="all">All</button>
-              <button class="seg" data-val="odd">Odd</button>
-              <button class="seg" data-val="even">Even</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Skip pattern</label>
-            <div class="seg-ctrl" data-key="skip">
-              <button class="seg active" data-val="none">None</button>
-              <button class="seg" data-val="2">Every 2nd</button>
-              <button class="seg" data-val="3">Every 3rd</button>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- 3. STYLE -->
-      <div class="panel">
-        <div class="panel-header collapsible" data-target="style-body">
-          <span class="panel-title">Style</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6l4 4 4-4"/></svg>
-        </div>
-        <div class="panel-body" id="style-body">
-
-          <div class="field">
-            <label>Font</label>
-            <select id="s-font">
-              <option value="Helvetica">Helvetica</option>
-              <option value="Times-Roman">Times Roman</option>
-              <option value="Courier">Courier</option>
-              <option value="Cairo" selected>Cairo (Arabic + Latin)</option>
-            </select>
-          </div>
-
-          <div class="field-row">
-            <div class="field">
-              <label>Size <span class="hint">pt</span></label>
-              <input type="number" id="s-size" value="12" min="4" max="200">
-            </div>
-            <div class="field">
-              <label>Weight</label>
-              <select id="s-weight">
-                <option value="300">Light</option>
-                <option value="400" selected>Regular</option>
-                <option value="600">SemiBold</option>
-                <option value="700">Bold</option>
-                <option value="900">Black</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Color</label>
-            <div class="color-row">
-              <input type="color" id="s-color" value="#000000">
-              <input type="text" id="s-color-hex" value="#000000" maxlength="7" class="hex-input">
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Opacity <span class="hint slider-val" id="opacity-val">100%</span></label>
-            <input type="range" class="slider" id="s-opacity" min="0" max="100" value="100">
-          </div>
-
-          <div class="field">
-            <label>Direction</label>
-            <div class="seg-ctrl" data-key="direction">
-              <button class="seg active" data-val="ltr">LTR</button>
-              <button class="seg" data-val="rtl">RTL</button>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- 4. POSITION -->
-      <div class="panel">
-        <div class="panel-header collapsible" data-target="pos-body">
-          <span class="panel-title">Position</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6l4 4 4-4"/></svg>
-        </div>
-        <div class="panel-body" id="pos-body">
-
-          <div class="field">
-            <label>Preset</label>
-            <select id="s-pos-preset">
-              <option value="bottom-center">Bottom Center</option>
-              <option value="bottom-left">Bottom Left</option>
-              <option value="bottom-right">Bottom Right</option>
-              <option value="top-center">Top Center</option>
-              <option value="top-left">Top Left</option>
-              <option value="top-right">Top Right</option>
-              <option value="middle-left">Middle Left</option>
-              <option value="middle-right">Middle Right</option>
-              <option value="custom">Custom (drag)</option>
-            </select>
-          </div>
-
-          <div class="field">
-            <label>X — <span class="hint">left → right</span> <span class="slider-val" id="x-val">50%</span></label>
-            <input type="range" class="slider" id="s-x" min="0" max="100" value="50" step="0.5">
-          </div>
-
-          <div class="field">
-            <label>Y — <span class="hint">top → bottom</span> <span class="slider-val" id="y-val">92%</span></label>
-            <input type="range" class="slider" id="s-y" min="0" max="100" value="92" step="0.5">
-          </div>
-
-          <div class="coord-display">
-            <div class="coord-chip"><span>X</span><strong id="coord-x">50.0%</strong></div>
-            <div class="coord-chip"><span>Y</span><strong id="coord-y">92.0%</strong></div>
-          </div>
-
-        </div>
-      </div>
-
-      <!-- 5. ROTATION -->
-      <div class="panel">
-        <div class="panel-header collapsible" data-target="rot-body">
-          <span class="panel-title">Rotation</span>
-          <svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6l4 4 4-4"/></svg>
-        </div>
-        <div class="panel-body" id="rot-body">
-
-          <div class="field">
-            <div class="seg-ctrl" data-key="rot-preset">
-              <button class="seg active" data-val="0">0°</button>
-              <button class="seg" data-val="90">90°</button>
-              <button class="seg" data-val="180">180°</button>
-              <button class="seg" data-val="270">270°</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Fine rotation <span class="slider-val" id="rot-val">0°</span></label>
-            <input type="range" class="slider" id="s-rotation" min="0" max="359" value="0">
-          </div>
-
-        </div>
-      </div>
-
-    </div><!-- /element-settings -->
-
-    <div class="sidebar-bottom">
-      <label class="toggle-row" title="Safe mode rasterizes pages (slower but handles all fonts)">
-        <input type="checkbox" id="safe-mode">
-        <span class="toggle-track"><span class="toggle-thumb"></span></span>
-        <span>Safe Mode</span>
-      </label>
+        </main>
     </div>
 
-  </aside>
-
-  <!-- ═══ CANVAS AREA ═══ -->
-  <main id="canvas-area">
-
-    <!-- Drop zone -->
-    <div id="drop-zone">
-      <div class="dz-card" id="dz-target">
-        <div class="dz-icon">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none"><rect width="48" height="48" rx="12" fill="#1e293b"/><path d="M24 14v14M18 22l6-8 6 8" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 32v2a1 1 0 001 1h20a1 1 0 001-1v-2" stroke="#475569" stroke-width="2" stroke-linecap="round"/></svg>
-        </div>
-        <p class="dz-title">Drop a PDF here</p>
-        <p class="dz-sub">or click to choose a file</p>
-        <button class="dz-btn" id="btn-dz-open">Choose PDF</button>
-      </div>
-    </div>
-
-    <!-- Preview container -->
-    <div id="preview-container" style="display:none">
-      <div id="page-wrap">
-        <div id="page-inner">
-          <canvas id="pdf-canvas"></canvas>
-          <!-- Overlay for draggable handles -->
-          <div id="overlay-div"></div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-</div>
-
-<!-- Loading overlay -->
-<div id="loader" style="display:none">
-  <div class="loader-box">
-    <div class="loader-ring"></div>
-    <p class="loader-text" id="loader-text">Loading…</p>
-    <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
-  </div>
-</div>
-
-<!-- Toast -->
-<div id="toast"></div>
-
-<!-- Hidden file input -->
-<input type="file" id="file-input" accept=".pdf" style="display:none">
-
-<!-- External libs -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-
-<!-- App modules -->
-<script src="utils.js"></script>
-<script src="elements.js"></script>
-<script src="renderer.js"></script>
-<script src="exporter.js"></script>
-<script src="app.js"></script>
+    <script src="engine.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
