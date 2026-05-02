@@ -1,16 +1,15 @@
-// State management
+// ---------- STATE ----------
 let appState = {
-    pdfDoc: null,           // pdf.js document
-    pdfBytes: null,
+    pdfDoc: null,               // pdf.js document object
+    pdfBytes: null,             // original file bytes
     totalOriginalPages: 0,
     currentPage: 1,
     zoom: 1.0,
-    elements: [],
-    activeElementId: null,
-    isDragging: false
+    elements: [],               // array of element objects
+    activeElementId: null
 };
 
-// DOM elements
+// ---------- DOM Elements ----------
 const pdfUpload = document.getElementById('pdfUpload');
 const uploadTrigger = document.getElementById('uploadTrigger');
 const repeatBlock = document.getElementById('repeatBlock');
@@ -45,7 +44,7 @@ const posXInput = document.getElementById('posX');
 const posYInput = document.getElementById('posY');
 const rotationSlider = document.getElementById('rotationSlider');
 
-// Helper to update UI from active element
+// ---------- Helper: sync UI from active element ----------
 function syncUIFromActiveElement() {
     const el = appState.elements.find(e => e.id === appState.activeElementId);
     if (!el) {
@@ -76,7 +75,7 @@ function updateActiveElementProperty(key, value) {
     }
 }
 
-// Bind settings events
+// Bind settings events (called once)
 function bindSettingsEvents() {
     formatInput.addEventListener('input', (e) => updateActiveElementProperty('format', e.target.value));
     startNumInput.addEventListener('input', (e) => updateActiveElementProperty('startNum', parseInt(e.target.value) || 1));
@@ -91,14 +90,14 @@ function bindSettingsEvents() {
     rotationSlider.addEventListener('input', (e) => updateActiveElementProperty('rotation', parseInt(e.target.value)));
 }
 
-// Render element list in sidebar
+// ---------- Elements UI ----------
 function renderElementsList() {
     elementsListDiv.innerHTML = '';
     appState.elements.forEach((el, idx) => {
         const div = document.createElement('div');
         div.className = `element-item ${appState.activeElementId === el.id ? 'active' : ''}`;
         div.innerHTML = `
-            <span class="element-name">عنصر ${idx+1} : ${el.format.replace('{n}','…')}</span>
+            <span class="element-name">${el.format.replace(/\{n\}/g, '...')}</span>
             <button class="delete-element" data-id="${el.id}"><i class="fas fa-trash-alt"></i></button>
         `;
         div.addEventListener('click', (e) => {
@@ -136,7 +135,7 @@ function addElement() {
     const newId = Date.now();
     const newElem = {
         id: newId,
-        format: 'صفحة {n}',
+        format: '{n}',
         startNum: 1,
         padding: '1',
         applyTo: 'all',
@@ -152,28 +151,32 @@ function addElement() {
     setActiveElement(newId);
 }
 
-// PDF loading
+// ---------- PDF Upload & Loading ----------
 async function handleUpload(file) {
     if (!file) return;
     emptyState.style.display = 'none';
     canvasContainer.style.display = 'block';
+    
     const arrayBuffer = await file.arrayBuffer();
     appState.pdfBytes = arrayBuffer;
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     appState.pdfDoc = await loadingTask.promise;
     appState.totalOriginalPages = appState.pdfDoc.numPages;
     totalPagesSpan.innerText = appState.totalOriginalPages;
+    
+    // Show repeat block only if single page
     if (appState.totalOriginalPages === 1) {
         repeatBlock.style.display = 'block';
     } else {
         repeatBlock.style.display = 'none';
     }
+    
     appState.currentPage = 1;
     currentPageSpan.innerText = 1;
     await renderPreview();
 }
 
-// Render preview with current zoom and page
+// ---------- Preview Rendering (with dynamic overlay) ----------
 async function renderPreview() {
     if (!appState.pdfDoc) return;
     const pageNum = appState.currentPage;
@@ -183,17 +186,15 @@ async function renderPreview() {
     canvas.height = viewport.height;
     canvasContainer.style.width = `${viewport.width}px`;
     canvasContainer.style.height = `${viewport.height}px`;
+    
     await page.render({ canvasContext: ctx, viewport }).promise;
     
-    // Draw overlays
+    // Clear and redraw overlays
     overlayContainer.innerHTML = '';
-    const canvasRect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / canvasRect.width;
-    const scaleY = canvas.height / canvasRect.height;
-    
     for (const el of appState.elements) {
         const placement = NumXEngine.calculatePlacement(el, pageNum-1, canvas.width, canvas.height, false);
         if (!placement) continue;
+        
         const div = document.createElement('div');
         div.className = `overlay-number ${el.id === appState.activeElementId ? 'active' : ''}`;
         div.innerText = placement.text;
@@ -206,13 +207,13 @@ async function renderPreview() {
         div.style.fontWeight = '500';
         div.style.textShadow = '0 1px 2px rgba(0,0,0,0.2)';
         
-        // Drag functionality
+        // Drag to reposition
         div.addEventListener('mousedown', (e) => startDragElement(e, el));
         overlayContainer.appendChild(div);
     }
 }
 
-// Drag to reposition
+// Drag handler
 let dragActive = false;
 function startDragElement(e, element) {
     e.preventDefault();
@@ -226,10 +227,10 @@ function startDragElement(e, element) {
     function onMouseMove(moveEv) {
         const dx = moveEv.clientX - startX;
         const dy = moveEv.clientY - startY;
-        const deltaXPercent = (dx / canvasRect.width) * 100;
-        const deltaYPercent = (dy / canvasRect.height) * 100;
-        let newX = startPosX + deltaXPercent;
-        let newY = startPosY + deltaYPercent;
+        let deltaX = (dx / canvasRect.width) * 100;
+        let deltaY = (dy / canvasRect.height) * 100;
+        let newX = startPosX + deltaX;
+        let newY = startPosY + deltaY;
         newX = Math.min(100, Math.max(0, newX));
         newY = Math.min(100, Math.max(0, newY));
         updateActiveElementProperty('posX', newX);
@@ -264,39 +265,49 @@ function zoom(delta) {
     renderPreview();
 }
 
-// Export PDF with numbering
+// ---------- EXPORT FUNCTION (FULLY WORKING) ----------
 async function exportPDF() {
-    if (!appState.pdfBytes) return alert('يرجى رفع ملف PDF أولاً');
+    if (!appState.pdfBytes) {
+        alert('يرجى رفع ملف PDF أولاً');
+        return;
+    }
+    
     const repeatCount = parseInt(repeatCountInput.value) || 1;
     const isSinglePageRepeat = (appState.totalOriginalPages === 1 && repeatCount > 1);
     
+    // Load the original PDF
     const originalPdf = await PDFLib.PDFDocument.load(appState.pdfBytes);
     const newPdf = await PDFLib.PDFDocument.create();
     newPdf.registerFontkit(fontkit);
     
-    let pagesList = [];
+    // Determine how many pages in final document
+    let finalPageCount = 0;
+    if (isSinglePageRepeat) {
+        finalPageCount = repeatCount;
+    } else {
+        finalPageCount = appState.totalOriginalPages;
+    }
+    
+    // Copy pages accordingly
     if (isSinglePageRepeat) {
         const [templatePage] = await newPdf.copyPages(originalPdf, [0]);
         for (let i = 0; i < repeatCount; i++) {
             const [copied] = await newPdf.copyPages(originalPdf, [0]);
-            pagesList.push(copied);
+            newPdf.addPage(copied);
         }
     } else {
         const indices = originalPdf.getPageIndices();
-        const copied = await newPdf.copyPages(originalPdf, indices);
-        pagesList = copied;
+        const pages = await newPdf.copyPages(originalPdf, indices);
+        pages.forEach(page => newPdf.addPage(page));
     }
     
-    // Add pages to new document
-    pagesList.forEach(page => newPdf.addPage(page));
-    const finalPages = newPdf.getPages();
-    
-    // Apply numbering using engine
-    for (let i = 0; i < finalPages.length; i++) {
-        const page = finalPages[i];
+    const pages = newPdf.getPages();
+    // Apply numbering to each page
+    for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
         const { width, height } = page.getSize();
         for (const el of appState.elements) {
-            const placement = NumXEngine.calculatePlacement(el, i, width, height, true);
+            const placement = NumXEngine.calculatePlacement(el, i, width, height, true, pages.length);
             if (!placement) continue;
             const rgb = NumXEngine.hexToRgb(placement.color);
             page.drawText(placement.text, {
@@ -310,6 +321,7 @@ async function exportPDF() {
         }
     }
     
+    // Save and download
     const pdfBytes = await newPdf.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const link = document.createElement('a');
@@ -319,7 +331,7 @@ async function exportPDF() {
     URL.revokeObjectURL(link.href);
 }
 
-// Event listeners
+// ---------- Event Listeners ----------
 uploadTrigger.addEventListener('click', () => pdfUpload.click());
 pdfUpload.addEventListener('change', (e) => handleUpload(e.target.files[0]));
 addElementBtn.addEventListener('click', addElement);
@@ -331,5 +343,6 @@ exportBtn.addEventListener('click', exportPDF);
 repeatCountInput.addEventListener('change', () => renderPreview());
 
 bindSettingsEvents();
+
 // Initialize with one default element
 addElement();

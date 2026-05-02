@@ -1,9 +1,9 @@
 /**
- * NumX Engine v2 - Shared logic for preview & export
- * Handles coordinate conversion, text generation, and placement
+ * NumX Engine v3 - Shared logic for preview & export
+ * Handles text generation, coordinate conversion, and placement
  */
 const NumXEngine = (function() {
-    // Convert hex to RGB object (0-1 range)
+    // Convert hex to RGB (0-1 range)
     function hexToRgb(hex) {
         const r = parseInt(hex.slice(1, 3), 16) / 255;
         const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -11,13 +11,15 @@ const NumXEngine = (function() {
         return { r, g, b };
     }
 
-    // Generate formatted number string with padding
-    function formatNumber(num, padding) {
-        return num.toString().padStart(parseInt(padding), '0');
+    // Apply padding
+    function padNumber(num, padding) {
+        const padLen = parseInt(padding);
+        if (padLen === 1) return num.toString();
+        return num.toString().padStart(padLen, '0');
     }
 
-    // Check if page should have the element based on rules
-    function shouldApply(element, pageIndex, totalPages) {
+    // Check if element applies to this page
+    function shouldApply(element, pageIndex) {
         const realPage = pageIndex + 1;
         const startPage = parseInt(element.startPage) || 1;
         if (realPage < startPage) return false;
@@ -28,50 +30,57 @@ const NumXEngine = (function() {
         return true;
     }
 
-    // Generate display text
-    function getDisplayText(element, pageIndex) {
+    // Generate display text with user's format
+    function getDisplayText(element, pageIndex, totalPages = null) {
         const realPage = pageIndex + 1;
         const startPage = parseInt(element.startPage) || 1;
         const startNum = parseInt(element.startNum) || 1;
-        const padding = element.padding || 1;
+        const padding = element.padding || '1';
         
         let sequence = (realPage - startPage) + startNum;
-        let numStr = formatNumber(sequence, padding);
+        let numStr = padNumber(sequence, padding);
         let text = element.format.replace(/\{n\}/g, numStr);
-        
-        // Add left-to-right mark for Arabic to keep numbers correct direction
+        if (totalPages !== null) {
+            text = text.replace(/\{total\}/g, totalPages);
+        }
+        // Left-to-right mark for Arabic mixed with numbers
         if (/[\u0600-\u06FF]/.test(text)) {
             text = '\u200E' + text;
         }
         return text;
     }
 
-    // Calculate coordinates and styles for a given context (export vs preview)
-    // For preview (DOM): Y from top, rotation normal
-    // For export (PDF-lib): Y from bottom, rotation = (360 - rot) % 360
-    function calculatePlacement(element, pageIndex, pageWidth, pageHeight, isExport = false) {
+    /**
+     * Calculate placement for either preview (DOM) or export (PDF-lib)
+     * @param {Object} element - element settings
+     * @param {number} pageIndex - zero-based page index
+     * @param {number} pageWidth - width in points/pixels
+     * @param {number} pageHeight - height in points/pixels
+     * @param {boolean} isExport - if true, Y origin is bottom-left; if false, top-left
+     * @param {number} totalPages - optional total pages for {total} replacement
+     */
+    function calculatePlacement(element, pageIndex, pageWidth, pageHeight, isExport = false, totalPages = null) {
         if (!shouldApply(element, pageIndex)) return null;
         
-        const text = getDisplayText(element, pageIndex);
+        const text = getDisplayText(element, pageIndex, totalPages);
         const fontSize = parseFloat(element.fontSize);
         const opacity = (element.opacity || 100) / 100;
         const color = element.color;
         
-        // Position: X and Y are percentages (0-100)
-        let xPercent = parseFloat(element.posX);
-        let yPercent = parseFloat(element.posY);
+        // Position as percentage (0-100)
+        let xPercent = parseFloat(element.posX) || 0;
+        let yPercent = parseFloat(element.posY) || 0;
         
         let x = (xPercent / 100) * pageWidth;
         let y;
         if (isExport) {
-            // PDF-lib origin bottom-left
+            // PDF-lib: origin at bottom-left
             y = ((100 - yPercent) / 100) * pageHeight;
         } else {
-            // DOM origin top-left
+            // DOM: origin at top-left
             y = (yPercent / 100) * pageHeight;
         }
         
-        // Rotation handling: preview uses normal CSS rotation, export uses PDF rotation (counter-clockwise)
         let rotation = parseFloat(element.rotation) || 0;
         let finalRotation = isExport ? (360 - rotation) % 360 : rotation;
         
@@ -83,7 +92,6 @@ const NumXEngine = (function() {
             color,
             opacity,
             rotation: finalRotation,
-            // For internal use
             originalRotation: rotation
         };
     }
