@@ -1,151 +1,431 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NumX | Professional PDF Numbering</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>NumX Pro | ترقيم PDF احترافي</title>
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #090C15;
+            color: #E8EDF5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1A1F2E;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3E4A6B;
+            border-radius: 4px;
+        }
+
+        /* Layout */
+        .app {
+            display: flex;
+            height: 100%;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 360px;
+            background: #0F1322;
+            border-right: 1px solid #1E2438;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            backdrop-filter: blur(2px);
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid #1E2438;
+        }
+
+        .logo {
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #FFFFFF 0%, #70C8FF 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .logo span {
+            background: linear-gradient(135deg, #70C8FF, #2A7FFF);
+            -webkit-background-clip: text;
+            background-clip: text;
+        }
+        .sub {
+            font-size: 0.75rem;
+            color: #5D6F8F;
+            margin-top: 6px;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .section {
+            margin-bottom: 28px;
+        }
+
+        .section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            color: #5F7F9E;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-title i {
+            font-size: 0.8rem;
+        }
+
+        .control-group {
+            margin-bottom: 16px;
+        }
+        .control-label {
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #B9C7D9;
+            display: block;
+        }
+        input, select, .upload-btn {
+            width: 100%;
+            background: #070A14;
+            border: 1px solid #252D42;
+            border-radius: 12px;
+            padding: 10px 14px;
+            color: white;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            font-family: 'Inter', monospace;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+        .upload-btn {
+            display: inline-block;
+            text-align: center;
+            background: #111827;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .upload-btn:hover {
+            background: #1F2937;
+            border-color: #3B82F6;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* Element list */
+        .elements-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .element-item {
+            background: #0C1020;
+            border: 1px solid #222A40;
+            border-radius: 14px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: 0.1s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .element-item.active {
+            border-color: #3B82F6;
+            background: #111B2E;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.15);
+        }
+        .element-name {
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        .delete-element {
+            background: none;
+            border: none;
+            color: #7F8FA4;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 4px;
+        }
+        .delete-element:hover {
+            color: #F87171;
+        }
+        .add-btn {
+            background: #1A2340;
+            border: none;
+            border-radius: 30px;
+            padding: 6px 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #A5C9FF;
+            cursor: pointer;
+        }
+
+        /* Disabled settings */
+        .settings-panel.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        hr {
+            border-color: #1E2438;
+            margin: 16px 0;
+        }
+
+        /* Viewer */
+        .viewer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #060912;
+        }
+        .toolbar {
+            height: 64px;
+            background: #0B0F1A;
+            border-bottom: 1px solid #1A2035;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+        .page-nav {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            background: #0F1322;
+            padding: 6px 12px;
+            border-radius: 40px;
+        }
+        .nav-btn {
+            background: #1E2A3A;
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .zoom-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .primary-btn {
+            background: linear-gradient(95deg, #2563EB, #3B82F6);
+            border: none;
+            padding: 8px 20px;
+            border-radius: 40px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.15s;
+        }
+        .preview-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            padding: 30px;
+            position: relative;
+        }
+        .canvas-wrapper {
+            position: relative;
+            box-shadow: 0 20px 35px -15px rgba(0,0,0,0.6);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #1E1E2F;
+        }
+        canvas {
+            display: block;
+            width: auto;
+            height: auto;
+        }
+        .overlay-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .overlay-number {
+            position: absolute;
+            pointer-events: auto;
+            cursor: move;
+            white-space: nowrap;
+            user-select: none;
+            font-family: monospace;
+            transition: outline 0.1s;
+            transform-origin: center;
+        }
+        .overlay-number.active {
+            outline: 2px solid #3B82F6;
+            outline-offset: 4px;
+            border-radius: 4px;
+        }
+        .empty-state {
+            text-align: center;
+            color: #4A5A7A;
+        }
+    </style>
 </head>
-<body class="dark-theme">
-    <div id="app">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="logo">Num<span>X</span></div>
-            
-            <div class="sidebar-scroll">
-                <section class="group">
-                    <h3>1. File</h3>
-                    <div class="control-row">
-                        <label class="upload-btn">
-                            Upload PDF
-                            <input type="file" id="pdf-upload" accept="application/pdf" hidden>
-                        </label>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">Num<span>X</span> Pro</div>
+            <div class="sub">ترقيم دقيق احترافي</div>
+        </div>
+        <div class="sidebar-content">
+            <!-- Upload -->
+            <div class="section">
+                <div class="section-title"><i class="fas fa-file-pdf"></i> الملف</div>
+                <div class="control-group">
+                    <div class="upload-btn" id="uploadTrigger">
+                        <i class="fas fa-cloud-upload-alt"></i> رفع PDF
                     </div>
-                    <div id="repeat-container" class="control-row hidden">
-                        <label>Repeat Page (Copies)</label>
-                        <input type="number" id="repeat-count" value="1" min="1">
-                    </div>
-                </section>
-
-                <section class="group">
-                    <div class="flex-between">
-                        <h3>2. Elements</h3>
-                        <button id="add-element" class="btn-small">+ Add</button>
-                    </div>
-                    <div id="element-list"></div>
-                </section>
-
-                <div id="element-settings" class="disabled">
-                    <section class="group">
-                        <h3>3. Content</h3>
-                        <div class="control-row">
-                            <label>Format ({n} = number)</label>
-                            <input type="text" id="format" placeholder="Page {n}">
-                        </div>
-                        <div class="grid-2">
-                            <div>
-                                <label>Start</label>
-                                <input type="number" id="start-num" value="1">
-                            </div>
-                            <div>
-                                <label>Padding</label>
-                                <select id="padding">
-                                    <option value="1">1</option>
-                                    <option value="2">01</option>
-                                    <option value="3">001</option>
-                                </select>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="group">
-                        <h3>4. Page Rules</h3>
-                        <div class="control-row">
-                            <label>Apply To</label>
-                            <select id="apply-to">
-                                <option value="all">All Pages</option>
-                                <option value="odd">Odd Pages Only</option>
-                                <option value="even">Even Pages Only</option>
-                            </select>
-                        </div>
-                        <div class="control-row">
-                            <label>Start From Page</label>
-                            <input type="number" id="start-page" value="1" min="1">
-                        </div>
-                    </section>
-
-                    <section class="group">
-                        <h3>5. Style</h3>
-                        <div class="grid-2">
-                            <div>
-                                <label>Size</label>
-                                <input type="number" id="font-size" value="12">
-                            </div>
-                            <div>
-                                <label>Color</label>
-                                <input type="color" id="font-color" value="#000000">
-                            </div>
-                        </div>
-                        <div class="control-row">
-                            <label>Opacity</label>
-                            <input type="range" id="opacity" min="0" max="100" value="100">
-                        </div>
-                    </section>
-
-                    <section class="group">
-                        <h3>6. Position & Rotation</h3>
-                        <div class="grid-2">
-                            <div>
-                                <label>X (%)</label>
-                                <input type="number" id="pos-x" step="0.1" value="50">
-                            </div>
-                            <div>
-                                <label>Y (%)</label>
-                                <input type="number" id="pos-y" step="0.1" value="95">
-                            </div>
-                        </div>
-                        <div class="control-row">
-                            <label>Rotation</label>
-                            <input type="range" id="rotation" min="0" max="360" value="0">
-                        </div>
-                    </section>
+                    <input type="file" id="pdfUpload" accept="application/pdf" hidden>
+                </div>
+                <div class="control-group" id="repeatBlock" style="display:none;">
+                    <label class="control-label">تكرار الصفحة الواحدة (عدد النسخ)</label>
+                    <input type="number" id="repeatCount" value="1" min="1">
                 </div>
             </div>
-        </aside>
 
-        <!-- Main Content -->
-        <main class="viewer">
-            <header class="top-bar">
-                <div class="nav-controls">
-                    <button id="prev-page">←</button>
-                    <span>Page <span id="current-page-num">1</span> / <span id="total-pages-num">1</span></span>
-                    <button id="next-page">→</button>
+            <!-- Elements -->
+            <div class="section">
+                <div class="elements-header">
+                    <div class="section-title"><i class="fas fa-layer-group"></i> العناصر</div>
+                    <button class="add-btn" id="addElementBtn"><i class="fas fa-plus"></i> إضافة</button>
                 </div>
-                <div class="zoom-controls">
-                    <button id="zoom-out">-</button>
-                    <span id="zoom-level">100%</span>
-                    <button id="zoom-in">+</button>
-                </div>
-                <button id="export-btn" class="primary-btn">Download PDF</button>
-            </header>
+                <div id="elementsList"></div>
+            </div>
 
-            <div class="preview-container" id="drop-zone">
-                <div id="pdf-canvas-wrapper">
-                    <canvas id="pdf-canvas"></canvas>
-                    <div id="overlay-container"></div>
+            <!-- Settings panel (dynamic) -->
+            <div id="settingsPanel" class="settings-panel disabled">
+                <div class="section">
+                    <div class="section-title"><i class="fas fa-pen"></i> المحتوى</div>
+                    <div class="control-group">
+                        <label class="control-label">التنسيق (استخدم {n})</label>
+                        <input type="text" id="formatInput" placeholder="صفحة {n}" value="صفحة {n}">
+                    </div>
+                    <div class="grid-2">
+                        <div><label class="control-label">رقم البداية</label><input type="number" id="startNum" value="1"></div>
+                        <div><label class="control-label">الأصفار</label><select id="paddingSelect"><option value="1">بدون</option><option value="2">01</option><option value="3">001</option></select></div>
+                    </div>
                 </div>
-                <div id="empty-state">
-                    <p>Drag & Drop PDF or Click Upload</p>
+
+                <div class="section">
+                    <div class="section-title"><i class="fas fa-filter"></i> قواعد الصفحات</div>
+                    <div class="control-group">
+                        <label class="control-label">التطبيق على</label>
+                        <select id="applyToSelect">
+                            <option value="all">كل الصفحات</option>
+                            <option value="odd">الفردية فقط</option>
+                            <option value="even">الزوجية فقط</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">بدء الترقيم من صفحة</label>
+                        <input type="number" id="startPage" value="1" min="1">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title"><i class="fas fa-palette"></i> النمط</div>
+                    <div class="grid-2">
+                        <div><label class="control-label">حجم الخط (pt)</label><input type="number" id="fontSize" value="14"></div>
+                        <div><label class="control-label">اللون</label><input type="color" id="fontColor" value="#ffffff"></div>
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">الشفافية</label>
+                        <input type="range" id="opacitySlider" min="0" max="100" value="100">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title"><i class="fas fa-arrows-alt"></i> الموقع والدوران</div>
+                    <div class="grid-2">
+                        <div><label class="control-label">X (%)</label><input type="number" id="posX" step="0.5" value="50"></div>
+                        <div><label class="control-label">Y (%)</label><input type="number" id="posY" step="0.5" value="90"></div>
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">الدوران (درجة)</label>
+                        <input type="range" id="rotationSlider" min="0" max="360" value="0">
+                    </div>
                 </div>
             </div>
-        </main>
-    </div>
+        </div>
+    </aside>
 
-    <script src="engine.js"></script>
-    <script src="app.js"></script>
+    <main class="viewer">
+        <div class="toolbar">
+            <div class="page-nav">
+                <button class="nav-btn" id="prevPageBtn"><i class="fas fa-chevron-left"></i></button>
+                <span>صفحة <span id="currentPageNum">1</span> / <span id="totalPagesNum">0</span></span>
+                <button class="nav-btn" id="nextPageBtn"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <div class="zoom-group">
+                <button class="nav-btn" id="zoomOutBtn">-</button>
+                <span id="zoomPercent">100%</span>
+                <button class="nav-btn" id="zoomInBtn">+</button>
+            </div>
+            <button class="primary-btn" id="exportBtn"><i class="fas fa-download"></i> تصدير PDF</button>
+        </div>
+        <div class="preview-area" id="previewArea">
+            <div id="emptyState" class="empty-state">
+                <i class="fas fa-cloud-upload-alt" style="font-size: 48px; margin-bottom: 12px;"></i>
+                <p>قم برفع ملف PDF لبدء الترقيم</p>
+            </div>
+            <div id="canvasContainer" style="display: none; position: relative;">
+                <canvas id="pdfCanvas"></canvas>
+                <div id="overlayContainer" class="overlay-container"></div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script src="engine.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

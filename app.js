@@ -1,7 +1,6 @@
-const { PDFDocument, rgb, degrees } = PDFLib;
-
-let state = {
-    pdfDoc: null,
+// State management
+let appState = {
+    pdfDoc: null,           // pdf.js document
     pdfBytes: null,
     totalOriginalPages: 0,
     currentPage: 1,
@@ -11,259 +10,326 @@ let state = {
     isDragging: false
 };
 
-// --- Initialization ---
-document.addEventListener('DOMContentLoaded', () => {
-    initEvents();
-    addElement(); // Start with one default element
-});
+// DOM elements
+const pdfUpload = document.getElementById('pdfUpload');
+const uploadTrigger = document.getElementById('uploadTrigger');
+const repeatBlock = document.getElementById('repeatBlock');
+const repeatCountInput = document.getElementById('repeatCount');
+const addElementBtn = document.getElementById('addElementBtn');
+const elementsListDiv = document.getElementById('elementsList');
+const settingsPanel = document.getElementById('settingsPanel');
+const prevBtn = document.getElementById('prevPageBtn');
+const nextBtn = document.getElementById('nextPageBtn');
+const currentPageSpan = document.getElementById('currentPageNum');
+const totalPagesSpan = document.getElementById('totalPagesNum');
+const zoomOutBtn = document.getElementById('zoomOutBtn');
+const zoomInBtn = document.getElementById('zoomInBtn');
+const zoomPercentSpan = document.getElementById('zoomPercent');
+const exportBtn = document.getElementById('exportBtn');
+const canvas = document.getElementById('pdfCanvas');
+const ctx = canvas.getContext('2d');
+const overlayContainer = document.getElementById('overlayContainer');
+const canvasContainer = document.getElementById('canvasContainer');
+const emptyState = document.getElementById('emptyState');
 
-function initEvents() {
-    document.getElementById('pdf-upload').addEventListener('change', handleUpload);
-    document.getElementById('add-element').addEventListener('click', addElement);
-    document.getElementById('prev-page').addEventListener('click', () => changePage(-1));
-    document.getElementById('next-page').addEventListener('click', () => changePage(1));
-    document.getElementById('export-btn').addEventListener('click', exportPDF);
-    
-    // Bind all inputs to update the state and preview
-    const inputs = ['format', 'start-num', 'padding', 'apply-to', 'start-page', 'font-size', 'font-color', 'opacity', 'pos-x', 'pos-y', 'rotation'];
-    inputs.forEach(id => {
-        document.getElementById(id).addEventListener('input', (e) => {
-            updateActiveElement(id.replace(/-([a-z])/g, g => g[1].toUpperCase()), e.target.value);
-        });
-    });
+// Settings inputs
+const formatInput = document.getElementById('formatInput');
+const startNumInput = document.getElementById('startNum');
+const paddingSelect = document.getElementById('paddingSelect');
+const applyToSelect = document.getElementById('applyToSelect');
+const startPageInput = document.getElementById('startPage');
+const fontSizeInput = document.getElementById('fontSize');
+const fontColorInput = document.getElementById('fontColor');
+const opacitySlider = document.getElementById('opacitySlider');
+const posXInput = document.getElementById('posX');
+const posYInput = document.getElementById('posY');
+const rotationSlider = document.getElementById('rotationSlider');
 
-    document.getElementById('repeat-count').addEventListener('change', renderPreview);
-}
-
-// --- PDF Loading ---
-async function handleUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    state.pdfBytes = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: state.pdfBytes });
-    state.pdfDoc = await loadingTask.promise;
-    state.totalOriginalPages = state.pdfDoc.numPages;
-
-    document.getElementById('empty-state').classList.add('hidden');
-    document.getElementById('total-pages-num').innerText = state.totalOriginalPages;
-    
-    if (state.totalOriginalPages === 1) {
-        document.getElementById('repeat-container').classList.remove('hidden');
-    } else {
-        document.getElementById('repeat-container').classList.add('hidden');
+// Helper to update UI from active element
+function syncUIFromActiveElement() {
+    const el = appState.elements.find(e => e.id === appState.activeElementId);
+    if (!el) {
+        settingsPanel.classList.add('disabled');
+        return;
     }
-
-    renderPreview();
+    settingsPanel.classList.remove('disabled');
+    formatInput.value = el.format;
+    startNumInput.value = el.startNum;
+    paddingSelect.value = el.padding;
+    applyToSelect.value = el.applyTo;
+    startPageInput.value = el.startPage;
+    fontSizeInput.value = el.fontSize;
+    fontColorInput.value = el.color;
+    opacitySlider.value = el.opacity;
+    posXInput.value = el.posX;
+    posYInput.value = el.posY;
+    rotationSlider.value = el.rotation;
 }
 
-// --- Element Management ---
-function addElement() {
-    const id = Date.now();
-    const newElement = {
-        id,
-        format: 'Page {n}',
-        startNum: 1,
-        padding: 1,
-        applyTo: 'all',
-        startPage: 1,
-        fontSize: 24,
-        color: '#ff0000',
-        opacity: 100,
-        posX: 50,
-        posY: 90,
-        rotation: 0
-    };
-    state.elements.push(newElement);
-    setActiveElement(id);
-    updateElementList();
-}
-
-function updateElementList() {
-    const list = document.getElementById('element-list');
-    list.innerHTML = '';
-    state.elements.forEach((el, index) => {
-        const div = document.createElement('div');
-        div.className = `control-row item ${el.id === state.activeElementId ? 'active' : ''}`;
-        div.style = "background: #334155; padding: 10px; margin-bottom: 5px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between;";
-        div.innerHTML = `
-            <span>Element ${index + 1}</span>
-            <button onclick="deleteElement(${el.id}, event)" style="background:none; border:none; color:#f87171; cursor:pointer;">✕</button>
-        `;
-        div.onclick = () => setActiveElement(el.id);
-        list.appendChild(div);
-    });
-}
-
-function setActiveElement(id) {
-    state.activeElementId = id;
-    const el = state.elements.find(e => e.id === id);
-    if (!el) return;
-
-    document.getElementById('element-settings').classList.remove('disabled');
-    
-    // Sync UI
-    document.getElementById('format').value = el.format;
-    document.getElementById('start-num').value = el.startNum;
-    document.getElementById('padding').value = el.padding;
-    document.getElementById('apply-to').value = el.applyTo;
-    document.getElementById('start-page').value = el.startPage;
-    document.getElementById('font-size').value = el.fontSize;
-    document.getElementById('font-color').value = el.color;
-    document.getElementById('opacity').value = el.opacity;
-    document.getElementById('pos-x').value = el.posX;
-    document.getElementById('pos-y').value = el.posY;
-    document.getElementById('rotation').value = el.rotation;
-
-    updateElementList();
-    renderPreview();
-}
-
-function updateActiveElement(key, value) {
-    const el = state.elements.find(e => e.id === state.activeElementId);
+// Update active element property and re-render
+function updateActiveElementProperty(key, value) {
+    if (!appState.activeElementId) return;
+    const el = appState.elements.find(e => e.id === appState.activeElementId);
     if (el) {
         el[key] = value;
         renderPreview();
     }
 }
 
-function deleteElement(id, e) {
-    e.stopPropagation();
-    state.elements = state.elements.filter(el => el.id !== id);
-    if (state.activeElementId === id) state.activeElementId = state.elements[0]?.id || null;
-    updateElementList();
-    renderPreview();
+// Bind settings events
+function bindSettingsEvents() {
+    formatInput.addEventListener('input', (e) => updateActiveElementProperty('format', e.target.value));
+    startNumInput.addEventListener('input', (e) => updateActiveElementProperty('startNum', parseInt(e.target.value) || 1));
+    paddingSelect.addEventListener('change', (e) => updateActiveElementProperty('padding', e.target.value));
+    applyToSelect.addEventListener('change', (e) => updateActiveElementProperty('applyTo', e.target.value));
+    startPageInput.addEventListener('input', (e) => updateActiveElementProperty('startPage', parseInt(e.target.value) || 1));
+    fontSizeInput.addEventListener('input', (e) => updateActiveElementProperty('fontSize', parseFloat(e.target.value) || 10));
+    fontColorInput.addEventListener('input', (e) => updateActiveElementProperty('color', e.target.value));
+    opacitySlider.addEventListener('input', (e) => updateActiveElementProperty('opacity', parseInt(e.target.value)));
+    posXInput.addEventListener('input', (e) => updateActiveElementProperty('posX', parseFloat(e.target.value) || 0));
+    posYInput.addEventListener('input', (e) => updateActiveElementProperty('posY', parseFloat(e.target.value) || 0));
+    rotationSlider.addEventListener('input', (e) => updateActiveElementProperty('rotation', parseInt(e.target.value)));
 }
 
-// --- Preview Engine ---
-async function renderPreview() {
-    if (!state.pdfDoc) return;
-
-    const pageNum = state.currentPage;
-    const page = await state.pdfDoc.getPage(pageNum);
-    
-    const viewport = page.getViewport({ scale: 2.0 * state.zoom }); // High res render
-    const canvas = document.getElementById('pdf-canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-
-    await page.render({ canvasContext: context, viewport: viewport }).promise;
-
-    // Render Overlays (The numbers)
-    const overlay = document.getElementById('overlay-container');
-    overlay.innerHTML = '';
-
-    state.elements.forEach(el => {
-        const placement = NumXEngine.calculatePlacement(el, pageNum - 1, canvas.width, canvas.height, false);
-        if (!placement) return;
-
+// Render element list in sidebar
+function renderElementsList() {
+    elementsListDiv.innerHTML = '';
+    appState.elements.forEach((el, idx) => {
         const div = document.createElement('div');
-        div.className = `draggable-number ${el.id === state.activeElementId ? 'active' : ''}`;
-        div.innerText = placement.text;
-        div.style.left = `${placement.x}px`;
-        div.style.top = `${placement.y}px`;
-        div.style.fontSize = `${placement.fontSize * 2 * state.zoom}px`; // Match 2x scale
-        div.style.color = placement.color;
-        div.style.opacity = placement.opacity;
-        div.style.transform = `translate(-50%, -50%) rotate(${placement.rotate}deg)`;
-        
-        // Drag logic
-        div.onmousedown = (e) => startDrag(e, el);
-        
-        overlay.appendChild(div);
+        div.className = `element-item ${appState.activeElementId === el.id ? 'active' : ''}`;
+        div.innerHTML = `
+            <span class="element-name">عنصر ${idx+1} : ${el.format.replace('{n}','…')}</span>
+            <button class="delete-element" data-id="${el.id}"><i class="fas fa-trash-alt"></i></button>
+        `;
+        div.addEventListener('click', (e) => {
+            if (e.target.closest('.delete-element')) return;
+            setActiveElement(el.id);
+        });
+        const delBtn = div.querySelector('.delete-element');
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteElement(el.id);
+        });
+        elementsListDiv.appendChild(div);
     });
 }
 
-function startDrag(e, element) {
-    setActiveElement(element.id);
-    const rect = document.getElementById('pdf-canvas').getBoundingClientRect();
-    
-    const move = (moveEvt) => {
-        const x = ((moveEvt.clientX - rect.left) / rect.width) * 100;
-        const y = ((moveEvt.clientY - rect.top) / rect.height) * 100;
-        
-        updateActiveElement('posX', Math.max(0, Math.min(100, x.toFixed(1))));
-        updateActiveElement('posY', Math.max(0, Math.min(100, y.toFixed(1))));
-        
-        document.getElementById('pos-x').value = element.posX;
-        document.getElementById('pos-y').value = element.posY;
-    };
-    
-    const stop = () => {
-        window.removeEventListener('mousemove', move);
-        window.removeEventListener('mouseup', stop);
-    };
-    
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', stop);
+function setActiveElement(id) {
+    appState.activeElementId = id;
+    renderElementsList();
+    syncUIFromActiveElement();
+    renderPreview();
 }
 
+function deleteElement(id) {
+    appState.elements = appState.elements.filter(el => el.id !== id);
+    if (appState.activeElementId === id) {
+        appState.activeElementId = appState.elements.length > 0 ? appState.elements[0].id : null;
+    }
+    renderElementsList();
+    if (appState.activeElementId) syncUIFromActiveElement();
+    else settingsPanel.classList.add('disabled');
+    renderPreview();
+}
+
+function addElement() {
+    const newId = Date.now();
+    const newElem = {
+        id: newId,
+        format: 'صفحة {n}',
+        startNum: 1,
+        padding: '1',
+        applyTo: 'all',
+        startPage: 1,
+        fontSize: 14,
+        color: '#ffffff',
+        opacity: 100,
+        posX: 50,
+        posY: 90,
+        rotation: 0
+    };
+    appState.elements.push(newElem);
+    setActiveElement(newId);
+}
+
+// PDF loading
+async function handleUpload(file) {
+    if (!file) return;
+    emptyState.style.display = 'none';
+    canvasContainer.style.display = 'block';
+    const arrayBuffer = await file.arrayBuffer();
+    appState.pdfBytes = arrayBuffer;
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    appState.pdfDoc = await loadingTask.promise;
+    appState.totalOriginalPages = appState.pdfDoc.numPages;
+    totalPagesSpan.innerText = appState.totalOriginalPages;
+    if (appState.totalOriginalPages === 1) {
+        repeatBlock.style.display = 'block';
+    } else {
+        repeatBlock.style.display = 'none';
+    }
+    appState.currentPage = 1;
+    currentPageSpan.innerText = 1;
+    await renderPreview();
+}
+
+// Render preview with current zoom and page
+async function renderPreview() {
+    if (!appState.pdfDoc) return;
+    const pageNum = appState.currentPage;
+    const page = await appState.pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: appState.zoom });
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    canvasContainer.style.width = `${viewport.width}px`;
+    canvasContainer.style.height = `${viewport.height}px`;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    
+    // Draw overlays
+    overlayContainer.innerHTML = '';
+    const canvasRect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / canvasRect.width;
+    const scaleY = canvas.height / canvasRect.height;
+    
+    for (const el of appState.elements) {
+        const placement = NumXEngine.calculatePlacement(el, pageNum-1, canvas.width, canvas.height, false);
+        if (!placement) continue;
+        const div = document.createElement('div');
+        div.className = `overlay-number ${el.id === appState.activeElementId ? 'active' : ''}`;
+        div.innerText = placement.text;
+        div.style.left = `${placement.x}px`;
+        div.style.top = `${placement.y}px`;
+        div.style.fontSize = `${placement.fontSize * appState.zoom}px`;
+        div.style.color = placement.color;
+        div.style.opacity = placement.opacity;
+        div.style.transform = `translate(-50%, -50%) rotate(${placement.originalRotation}deg)`;
+        div.style.fontWeight = '500';
+        div.style.textShadow = '0 1px 2px rgba(0,0,0,0.2)';
+        
+        // Drag functionality
+        div.addEventListener('mousedown', (e) => startDragElement(e, el));
+        overlayContainer.appendChild(div);
+    }
+}
+
+// Drag to reposition
+let dragActive = false;
+function startDragElement(e, element) {
+    e.preventDefault();
+    setActiveElement(element.id);
+    const canvasRect = canvas.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPosX = element.posX;
+    const startPosY = element.posY;
+    
+    function onMouseMove(moveEv) {
+        const dx = moveEv.clientX - startX;
+        const dy = moveEv.clientY - startY;
+        const deltaXPercent = (dx / canvasRect.width) * 100;
+        const deltaYPercent = (dy / canvasRect.height) * 100;
+        let newX = startPosX + deltaXPercent;
+        let newY = startPosY + deltaYPercent;
+        newX = Math.min(100, Math.max(0, newX));
+        newY = Math.min(100, Math.max(0, newY));
+        updateActiveElementProperty('posX', newX);
+        updateActiveElementProperty('posY', newY);
+        posXInput.value = newX;
+        posYInput.value = newY;
+    }
+    function onMouseUp() {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+    }
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+}
+
+// Navigation
 function changePage(delta) {
-    const newPage = state.currentPage + delta;
-    if (newPage >= 1 && newPage <= state.totalOriginalPages) {
-        state.currentPage = newPage;
-        document.getElementById('current-page-num').innerText = newPage;
+    let newPage = appState.currentPage + delta;
+    if (newPage >= 1 && newPage <= appState.totalOriginalPages) {
+        appState.currentPage = newPage;
+        currentPageSpan.innerText = newPage;
         renderPreview();
     }
 }
 
-// --- Export Engine ---
+// Zoom
+function zoom(delta) {
+    let newZoom = appState.zoom + delta;
+    newZoom = Math.min(3, Math.max(0.5, newZoom));
+    appState.zoom = newZoom;
+    zoomPercentSpan.innerText = `${Math.round(newZoom*100)}%`;
+    renderPreview();
+}
+
+// Export PDF with numbering
 async function exportPDF() {
-    if (!state.pdfBytes) return;
-
-    // 1. Load document
-    const mainPdf = await PDFDocument.load(state.pdfBytes);
-    const exportPdf = await PDFDocument.create();
-    exportPdf.registerFontkit(fontkit);
-
-    // 2. Handle Repeating Page feature
-    const repeatCount = parseInt(document.getElementById('repeat-count').value) || 1;
-    let pagesToProcess = [];
-
-    if (state.totalOriginalPages === 1 && repeatCount > 1) {
-        const [templatePage] = await exportPdf.copyPages(mainPdf, [0]);
+    if (!appState.pdfBytes) return alert('يرجى رفع ملف PDF أولاً');
+    const repeatCount = parseInt(repeatCountInput.value) || 1;
+    const isSinglePageRepeat = (appState.totalOriginalPages === 1 && repeatCount > 1);
+    
+    const originalPdf = await PDFLib.PDFDocument.load(appState.pdfBytes);
+    const newPdf = await PDFLib.PDFDocument.create();
+    newPdf.registerFontkit(fontkit);
+    
+    let pagesList = [];
+    if (isSinglePageRepeat) {
+        const [templatePage] = await newPdf.copyPages(originalPdf, [0]);
         for (let i = 0; i < repeatCount; i++) {
-            const newPage = exportPdf.addPage([templatePage.getWidth(), templatePage.getHeight()]);
-            // This is a simplified way to "clone" page content manually or re-copy
-            const [temp] = await exportPdf.copyPages(mainPdf, [0]);
-            exportPdf.insertPage(i, temp);
+            const [copied] = await newPdf.copyPages(originalPdf, [0]);
+            pagesList.push(copied);
         }
-        exportPdf.removePage(repeatCount); // remove the initial addPage
     } else {
-        const copiedPages = await exportPdf.copyPages(mainPdf, mainPdf.getPageIndices());
-        copiedPages.forEach(p => exportPdf.addPage(p));
+        const indices = originalPdf.getPageIndices();
+        const copied = await newPdf.copyPages(originalPdf, indices);
+        pagesList = copied;
     }
-
-    const pages = exportPdf.getPages();
-
-    // 3. Apply Numbers using SHARED Engine
-    for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
+    
+    // Add pages to new document
+    pagesList.forEach(page => newPdf.addPage(page));
+    const finalPages = newPdf.getPages();
+    
+    // Apply numbering using engine
+    for (let i = 0; i < finalPages.length; i++) {
+        const page = finalPages[i];
         const { width, height } = page.getSize();
-
-        state.elements.forEach(el => {
-            const props = NumXEngine.calculatePlacement(el, i, width, height, true);
-            if (!props) return;
-
-            const rgbColor = NumXEngine.hexToRgb(props.color);
-
-            page.drawText(props.text, {
-                x: props.x,
-                y: props.y,
-                size: props.fontSize,
-                color: rgb(rgbColor.r, rgbColor.g, rgbColor.b),
-                opacity: props.opacity,
-                rotate: degrees(props.rotate),
+        for (const el of appState.elements) {
+            const placement = NumXEngine.calculatePlacement(el, i, width, height, true);
+            if (!placement) continue;
+            const rgb = NumXEngine.hexToRgb(placement.color);
+            page.drawText(placement.text, {
+                x: placement.x,
+                y: placement.y,
+                size: placement.fontSize,
+                color: PDFLib.rgb(rgb.r, rgb.g, rgb.b),
+                opacity: placement.opacity,
+                rotate: PDFLib.degrees(placement.rotation)
             });
-        });
+        }
     }
-
-    // 4. Download
-    const pdfBytes = await exportPdf.save();
+    
+    const pdfBytes = await newPdf.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `NumX_Numbered.pdf`;
+    link.download = 'NumX_Numbered.pdf';
     link.click();
+    URL.revokeObjectURL(link.href);
 }
+
+// Event listeners
+uploadTrigger.addEventListener('click', () => pdfUpload.click());
+pdfUpload.addEventListener('change', (e) => handleUpload(e.target.files[0]));
+addElementBtn.addEventListener('click', addElement);
+prevBtn.addEventListener('click', () => changePage(-1));
+nextBtn.addEventListener('click', () => changePage(1));
+zoomOutBtn.addEventListener('click', () => zoom(-0.1));
+zoomInBtn.addEventListener('click', () => zoom(0.1));
+exportBtn.addEventListener('click', exportPDF);
+repeatCountInput.addEventListener('change', () => renderPreview());
+
+bindSettingsEvents();
+// Initialize with one default element
+addElement();
