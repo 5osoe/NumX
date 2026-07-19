@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NumX – Professional PDF Numbering Editor</title>
+    <meta name="description" content="Add professional numbering to any PDF. Pixel-perfect, offline-capable.">
+    <meta name="theme-color" content="#1e293b">
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIk51bVgiLAogICJzaG9ydF9uYW1lIjogIk51bVgiLAogICJzdGFydF91cmwiOiIiLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiNmZmZmZmYiLAogICJ0aGVtZV9jb2xvciI6ICIjMWUyOTNiIgp9">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', system-ui, sans-serif; }
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-tertiary: #334155;
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --border: #475569;
+            --shadow: 0 4px 20px rgba(0,0,0,.35);
+        }
+        body { background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; line-height: 1.5; }
+        #app { display: flex; flex-direction: column; height: 100vh; }
+        header { background: var(--bg-secondary); padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+        .logo { font-size: 1.5rem; font-weight: 700; color: var(--accent); letter-spacing: .5px; }
+        .toolbar-top { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+        main { display: flex; flex: 1; overflow: hidden; }
+        aside { width: 340px; background: var(--bg-secondary); border-right: 1px solid var(--border); padding: 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 1.5rem; }
+        .workspace { flex: 1; overflow: auto; background: #020617; padding: 2rem; display: flex; flex-direction: column; align-items: center; }
+        button {
+            background: var(--accent); color: white; border: none; padding: .65rem 1.15rem; border-radius: 6px;
+            font-size: .9rem; font-weight: 500; cursor: pointer; transition: background .2s; display: inline-flex; align-items: center; gap: .5rem;
+        }
+        button:hover { background: var(--accent-hover); }
+        button.secondary { background: var(--bg-tertiary); }
+        button.secondary:hover { background: #475569; }
+        button.danger { background: var(--danger); }
+        button.success { background: var(--success); }
+        input, select {
+            background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary);
+            padding: .6rem .8rem; border-radius: 6px; font-size: .9rem; width: 100%;
+        }
+        label { display: block; font-size: .85rem; color: var(--text-secondary); margin-bottom: .4rem; font-weight: 500; }
+        .form-group { margin-bottom: 1rem; }
+        .panel { background: var(--bg-tertiary); border-radius: 8px; padding: 1rem; }
+        .panel h3 { font-size: 1rem; margin-bottom: 1rem; color: white; border-bottom: 1px solid var(--border); padding-bottom: .5rem; }
+        .pdf-container { position: relative; background: white; box-shadow: var(--shadow); margin-bottom: 1.5rem; }
+        #pdfViewer { display: block; max-width: 100%; height: auto; }
+        #overlayCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #interactLayer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: all; }
+        .page-nav { display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+        .page-nav input { width: 70px; text-align: center; }
+        .num-element {
+            position: absolute; transform: translate(-50%, -50%) rotate(0deg); transform-origin: center center;
+            cursor: move; user-select: none; padding: 2px 4px; border: 1px dashed transparent;
+        }
+        .num-element.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+        .rotate-handle {
+            position: absolute; width: 12px; height: 12px; background: var(--accent); border-radius: 50%;
+            right: -18px; top: 50%; transform: translateY(-50%); cursor: grab; border: 2px solid white;
+        }
+        .hidden { display: none !important; }
+        .empty-state { color: var(--text-secondary); text-align: center; padding: 4rem 2rem; }
+        .flex { display: flex; gap: .5rem; align-items: center; }
+        .justify-between { justify-content: space-between; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <div class="logo">NumX</div>
+            <div class="toolbar-top">
+                <button id="uploadBtn">📄 Open PDF</button>
+                <input type="file" id="fileInput" accept=".pdf" class="hidden">
+                <button id="addElementBtn" class="secondary">+ Add Numbering</button>
+                <button id="exportBtn" class="success">💾 Export PDF</button>
+            </div>
+        </header>
+        <main>
+            <aside>
+                <div class="panel">
+                    <h3>Page Navigation</h3>
+                    <div class="page-nav">
+                        <button id="prevPage">←</button>
+                        <input type="number" id="currentPage" min="1" value="1">
+                        <span>/ <span id="totalPages">0</span></span>
+                        <button id="nextPage">→</button>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem;">
+                        <input type="checkbox" id="repeatPage"> Repeat Page
+                    </label>
+                </div>
+
+                <div class="panel" id="elementProps">
+                    <h3>Element Properties</h3>
+                    <div class="form-group">
+                        <label>Position (X, Y)</label>
+                        <div class="flex">
+                            <input type="number" id="posX" step="1" placeholder="X">
+                            <input type="number" id="posY" step="1" placeholder="Y">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Rotation (°)</label>
+                        <input type="number" id="rotation" min="-360" max="360" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Font Family</label>
+                        <select id="fontFamily">
+                            <option>Arial</option><option>Helvetica</option><option>Roboto</option><option selected>Inter</option>
+                            <option>Open Sans</option><option>Lato</option><option>Montserrat</option><option>Poppins</option>
+                            <option>Georgia</option><option>Times New Roman</option><option>Courier New</option><option>Consolas</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Size & Style</label>
+                        <div class="flex">
+                            <input type="number" id="fontSize" min="6" max="200" value="16">
+                            <button id="btnBold" class="secondary">B</button>
+                            <button id="btnItalic" class="secondary">I</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Color & Opacity</label>
+                        <div class="flex">
+                            <input type="color" id="fontColor" value="#000000">
+                            <input type="number" id="opacity" min="0" max="1" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Numbering Rules</label>
+                        <input type="number" id="startNumber" min="0" value="1" placeholder="Start #">
+                        <input type="number" id="leadingZeros" min="0" max="10" value="0" placeholder="Leading Zeros">
+                        <div class="flex" style="margin-top:.5rem;">
+                            <input type="number" id="startPage" min="1" value="1" placeholder="Start Page">
+                            <input type="number" id="endPage" min="1" value="999" placeholder="End Page">
+                        </div>
+                        <select id="targetPages" style="margin-top:.5rem;">
+                            <option>All Pages</option><option>Odd Pages</option><option>Even Pages</option>
+                        </select>
+                    </div>
+                    <button id="deleteElement" class="danger" style="width:100%;margin-top:1rem;">Delete Element</button>
+                </div>
+                <div class="empty-state" id="noSelection">Select an element to edit properties</div>
+            </aside>
+
+            <section class="workspace">
+                <div id="placeholder" class="empty-state">
+                    <h2>NumX – Professional PDF Numbering</h2>
+                    <p>Open a PDF document to begin adding page numbers</p>
+                </div>
+                <div id="viewerContainer" class="pdf-container hidden">
+                    <canvas id="pdfViewer"></canvas>
+                    <canvas id="overlayCanvas"></canvas>
+                    <div id="interactLayer"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        const App = (function() {
+            const State = {
+                pdfDoc: null,
+                totalPages: 0,
+                currentPage: 1,
+                pageSize: { w: 0, h: 0 },
+                elements: [],
+                selectedId: null,
+                repeatPage: false,
+                isDragging: false,
+                isRotating: false,
+                dragOffset: {x:0,y:0}
+            };
+
+            const FontEngine = {
+                registry: ['Arial','Helvetica','Roboto','Inter','Open Sans','Lato','Montserrat','Poppins','Georgia','Times New Roman','Courier New','Consolas'],
+                validate(font) { return this.registry.includes(font) ? font : 'Inter'; },
+                getCSS(font, size, bold, italic) {
+                    return `${italic ? 'italic ' : ''} ${bold ? 'bold ' : ''} ${size}px "${font}", sans-serif`;
+                }
+            };
+
+            const PDFEngine = {
+                async load(file) {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                    State.pdfDoc = await loadingTask.promise;
+                    State.totalPages = State.pdfDoc.numPages;
+                    UI.updatePageCount();
+                    return State.pdfDoc;
+                },
+                async renderPage(num) {
+                    const page = await State.pdfDoc.getPage(num);
+                    const vp = page.getViewport({ scale: 1 });
+                    State.pageSize = { w: vp.width, h: vp.height };
+
+                    const viewer = document.getElementById('pdfViewer');
+                    const ovl = document.getElementById('overlayCanvas');
+                    const inter = document.getElementById('interactLayer');
+                    viewer.width = vp.width; viewer.height = vp.height;
+                    viewer.style.width = vp.width + 'px'; viewer.style.height = vp.height + 'px';
+                    ovl.width = vp.width; ovl.height = vp.height;
+                    ovl.style.width = vp.width + 'px'; ovl.style.height = vp.height + 'px';
+                    inter.style.width = vp.width + 'px'; inter.style.height = vp.height + 'px';
+
+                    await page.render({ canvasContext: viewer.getContext('2d'), viewport: vp }).promise;
+                    Renderer.drawAll();
+                }
+            };
+
+            const Renderer = {
+                drawAll() {
+                    const ctx = document.getElementById('overlayCanvas').getContext('2d');
+                    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+                    this.drawInteractLayer();
+                    State.elements.forEach(el => {
+                        if(!this.isElementOnPage(el, State.currentPage)) return;
+                        this.drawElement(ctx, el);
+                    });
+                },
+                drawElement(ctx, el) {
+                    ctx.save();
+                    ctx.globalAlpha = el.opacity;
+                    ctx.font = FontEngine.getCSS(el.fontFamily, el.fontSize, el.bold, el.italic);
+                    ctx.fillStyle = el.color;
+                    ctx.translate(el.x, el.y);
+                    ctx.rotate(el.rotation * Math.PI / 180);
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(this.resolveNumber(el), 0, 0);
+                    ctx.restore();
+                },
+                drawInteractLayer() {
+                    const inter = document.getElementById('interactLayer');
+                    inter.innerHTML = '';
+                    State.elements.forEach(el => {
+                        if(!this.isElementOnPage(el, State.currentPage)) return;
+                        const div = document.createElement('div');
+                        div.className = 'num-element' + (el.id === State.selectedId ? ' selected' : '');
+                        div.dataset.id = el.id;
+                        div.style.left = el.x + 'px'; div.style.top = el.y + 'px';
+                        div.style.font = FontEngine.getCSS(el.fontFamily, el.fontSize, el.bold, el.italic);
+                        div.style.color = el.color;
+                        div.style.opacity = el.opacity;
+                        div.textContent = this.resolveNumber(el);
+                        if(el.id === State.selectedId) {
+                            const handle = document.createElement('div');
+                            handle.className = 'rotate-handle';
+                            div.appendChild(handle);
+                        }
+                        inter.appendChild(div);
+                    });
+                    this.bindInteractions();
+                },
+                resolveNumber(el) {
+                    let n = el.startNumber + (State.currentPage - el.startPage);
+                    if(el.targetPages === 'Odd Pages' && n%2===0) return '';
+                    if(el.targetPages === 'Even Pages' && n%2!==0) return '';
+                    if(el.leadingZeros > 0) n = String(n).padStart(el.leadingZeros+1, '0');
+                    return n;
+                },
+                isElementOnPage(el, page) {
+                    if(page < el.startPage || page > el.endPage) return false;
+                    if(el.targetPages === 'Odd Pages' && page%2===0) return false;
+                    if(el.targetPages === 'Even Pages' && page%2!==0) return false;
+                    return true;
+                }
+            };
+
+            const ExportEngine = {
+                async generate() {
+                    if(!State.pdfDoc) return alert('Open a PDF first!');
+                    const { jsPDF } = window.jspdf;
+                    const scale = 72 / 96;
+                    const page = await State.pdfDoc.getPage(1);
+                    const vp = page.getViewport({scale:1});
+                    const pdf = new jsPDF(vp.width>vp.height?'l':'p', 'pt', [vp.width*scale, vp.height*scale]);
+
+                    for(let p=1; p<=State.totalPages; p++) {
+                        const pg = await State.pdfDoc.getPage(p);
+                        const vw = pg.getViewport({scale:1});
+                        const canvas = document.createElement('canvas');
+                        canvas.width=vw.width; canvas.height=vw.height;
+                        await pg.render({canvasContext:canvas.getContext('2d'), viewport:vw}).promise;
+
+                        if(p>1) pdf.addPage([vw.width*scale, vw.height*scale]);
+                        pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 0,0, vw.width*scale, vw.height*scale);
+                        State.elements.forEach(el => {
+                            if(!Renderer.isElementOnPage(el, p)) return;
+                            pdf.saveGraphicsState();
+                            pdf.setGState({opacity:el.opacity});
+                            pdf.setFont(el.fontFamily);
+                            pdf.setFontSize(el.fontSize*scale);
+                            pdf.setTextColor(el.color);
+                            const x = el.x * scale, y = el.y * scale;
+                            pdf.text(Renderer.resolveNumber(el), x, y, {angle:el.rotation});
+                            pdf.restoreGraphicsState();
+                        });
+                    }
+                    pdf.save('NumX-Export.pdf');
+                }
+            };
+
+            function createElement() {
+                return {
+                    id: Date.now() + Math.random(),
+                    x: State.pageSize.w/2, y: State.pageSize.h - 40, rotation: 0,
+                    fontFamily: 'Inter', fontSize: 16, bold: false, italic: false,
+                    color: '#000000', opacity: 1, startNumber: 1, startPage: 1, endPage: 999,
+                    leadingZeros: 0, targetPages: 'All Pages'
+                };
+            }
+
+            const UI = {
+                init() {
+                    document.getElementById('uploadBtn').onclick = ()=>document.getElementById('fileInput').click();
+                    document.getElementById('fileInput').onchange = async e => {
+                        await PDFEngine.load(e.target.files[0]);
+                        document.getElementById('placeholder').classList.add('hidden');
+                        document.getElementById('viewerContainer').classList.remove('hidden');
+                        State.repeatPage = State.totalPages === 1;
+                        document.getElementById('repeatPage').checked = State.repeatPage;
+                        await PDFEngine.renderPage(1);
+                    };
+                    document.getElementById('addElementBtn').onclick = () => {
+                        State.elements.push(createElement());
+                        State.selectedId = State.elements[State.elements.length-1].id;
+                        Renderer.drawAll();
+                        this.updatePropertiesPanel();
+                    };
+                    document.getElementById('exportBtn').onclick = () => ExportEngine.generate();
+                    document.getElementById('prevPage').onclick = async () => { if(State.currentPage>1) { State.currentPage--; await PDFEngine.renderPage(State.currentPage); } };
+                    document.getElementById('nextPage').onclick = async () => { if(State.currentPage<State.totalPages) { State.currentPage++; await PDFEngine.renderPage(State.currentPage); } };
+                    document.getElementById('currentPage').onchange = async e => { let v=parseInt(e.target.value); if(v>=1&&v<=State.totalPages) { State.currentPage=v; await PDFEngine.renderPage(v); } };
+                    document.getElementById('repeatPage').onchange = e => State.repeatPage = e.target.checked;
+                    this.bindPropertyControls();
+                },
+                updatePageCount() {
+                    document.getElementById('totalPages').textContent = State.totalPages;
+                    document.getElementById('currentPage').max = State.totalPages;
+                },
+                bindPropertyControls() {
+                    const props = ['posX','posY','rotation','fontFamily','fontSize','fontColor','opacity','startNumber','leadingZeros','startPage','endPage','targetPages'];
+                    props.forEach(prop => {
+                        document.getElementById(prop).oninput = e => {
+                            const el = State.elements.find(x=>x.id===State.selectedId);
+                            if(!el) return;
+                            if(prop==='posX') el.x=parseFloat(e.target.value);
+                            if(prop==='posY') el.y=parseFloat(e.target.value);
+                            if(prop==='rotation') el.rotation=parseFloat(e.target.value);
+                            if(prop==='fontFamily') el.fontFamily=e.target.value;
+                            if(prop==='fontSize') el.fontSize=parseInt(e.target.value);
+                            if(prop==='fontColor') el.color=e.target.value;
+                            if(prop==='opacity') el.opacity=parseFloat(e.target.value);
+                            if(prop==='startNumber') el.startNumber=parseInt(e.target.value);
+                            if(prop==='leadingZeros') el.leadingZeros=parseInt(e.target.value);
+                            if(prop==='startPage') el.startPage=parseInt(e.target.value);
+                            if(prop==='endPage') el.endPage=parseInt(e.target.value);
+                            if(prop==='targetPages') el.targetPages=e.target.value;
+                            Renderer.drawAll();
+                        };
+                    });
+                    document.getElementById('btnBold').onclick = ()=>{ const el=State.elements.find(x=>x.id===State.selectedId); if(el){el.bold=!el.bold; Renderer.drawAll();} };
+                    document.getElementById('btnItalic').onclick = ()=>{ const el=State.elements.find(x=>x.id===State.selectedId); if(el){el.italic=!el.italic; Renderer.drawAll();} };
+                    document.getElementById('deleteElement').onclick = ()=>{ State.elements=State.elements.filter(x=>x.id!==State.selectedId); State.selectedId=null; Renderer.drawAll(); this.updatePropertiesPanel(); };
+                },
+                updatePropertiesPanel() {
+                    const el = State.elements.find(x=>x.id===State.selectedId);
+                    const panel = document.getElementById('elementProps');
+                    const empty = document.getElementById('noSelection');
+                    if(!el) { panel.classList.add('hidden'); empty.classList.remove('hidden'); return; }
+                    panel.classList.remove('hidden'); empty.classList.add('hidden');
+                    document.getElementById('posX').value = el.x;
+                    document.getElementById('posY').value = el.y;
+                    document.getElementById('rotation').value = el.rotation;
+                    document.getElementById('fontFamily').value = el.fontFamily;
+                    document.getElementById('fontSize').value = el.fontSize;
+                    document.getElementById('fontColor').value = el.color;
+                    document.getElementById('opacity').value = el.opacity;
+                    document.getElementById('startNumber').value = el.startNumber;
+                    document.getElementById('leadingZeros').value = el.leadingZeros;
+                    document.getElementById('startPage').value = el.startPage;
+                    document.getElementById('endPage').value = el.endPage;
+                    document.getElementById('targetPages').value = el.targetPages;
+                }
+            };
+
+            Renderer.bindInteractions = function() {
+                const layer = document.getElementById('interactLayer');
+                layer.querySelectorAll('.num-element').forEach(el => {
+                    el.onmousedown = e => {
+                        if(e.target.classList.contains('rotate-handle')) {
+                            State.isRotating = true;
+                        } else {
+                            State.isDragging = true;
+                            State.dragOffset = {x:e.offsetX, y:e.offsetY};
+                        }
+                        State.selectedId = el.dataset.id;
+                        UI.updatePropertiesPanel();
+                    };
+                });
+                layer.onmousemove = e => {
+                    if(!State.isDragging && !State.isRotating) return;
+                    const rect = layer.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const el = State.elements.find(x=>x.id===State.selectedId);
+                    if(!el) return;
+                    if(State.isDragging) { el.x=x; el.y=y; }
+                    if(State.isRotating) {
+                        const dx = x - el.x; const dy = y - el.y;
+                        el.rotation = Math.atan2(dy, dx) * 180 / Math.PI;
+                    }
+                    Renderer.drawAll();
+                    UI.updatePropertiesPanel();
+                };
+                layer.onmouseup = () => { State.isDragging = false; State.isRotating = false; };
+                layer.onclick = e => { if(e.target === layer) { State.selectedId = null; Renderer.drawAll(); UI.updatePropertiesPanel(); } };
+            };
+
+            return {
+                init() {
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+                    UI.init();
+                    if('serviceWorker' in navigator) {
+                        navigator.serviceWorker.register('data:text/javascript,').catch(()=>{});
+                    }
+                }
+            };
+        })();
+
+        document.addEventListener('DOMContentLoaded', App.init);
+    </script>
+</body>
+</html>
